@@ -9,6 +9,7 @@ from markdown_pro.gui.editor_widget import EditorWidget
 from markdown_pro.gui.line_numbers import LineNumbers
 from markdown_pro.gui.find_replace_dialog import FindReplaceDialog
 
+
 class MainWindow:
     def __init__(self) -> None:
         self.root = tk.Tk()
@@ -65,6 +66,7 @@ class MainWindow:
     def _build_menu(self) -> None:
         menubar = tk.Menu(self.root)
 
+        # ----- Arquivo -----
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Novo", accelerator="Ctrl+N", command=self._new)
         file_menu.add_command(label="Abrir...", accelerator="Ctrl+O", command=self._open)
@@ -77,26 +79,58 @@ class MainWindow:
         # Recentes
         self.recent_menu = tk.Menu(file_menu, tearoff=0)
         file_menu.add_cascade(label="Recentes", menu=self.recent_menu)
+
         file_menu.add_separator()
         file_menu.add_command(label="Sair", command=self._on_close)
 
         menubar.add_cascade(label="Arquivo", menu=file_menu)
 
+        # ----- Editar -----
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu.add_command(
+            label="Buscar/Substituir...",
+            accelerator="Ctrl+F",
+            command=self._open_find
+        )
+        menubar.add_cascade(label="Editar", menu=edit_menu)
+
         self.root.config(menu=menubar)
         self._refresh_recents_menu()
 
     def _bind_shortcuts(self) -> None:
-        self.root.bind_all("<Control-n>", lambda e: self._new())
-        self.root.bind_all("<Control-o>", lambda e: self._open())
-        self.root.bind_all("<Control-s>", lambda e: self._save())
-        self.root.bind_all("<Control-Shift-S>", lambda e: self._save_as())
-        self.root.bind_all("<Control-f>", lambda e: self._open_find())
-        self.root.bind_all("<Control-b>", lambda e: self.editor.toggle_wrap_selection("**", "**"))
-        self.root.bind_all("<Control-i>", lambda e: self.editor.toggle_wrap_selection("*", "*"))
-        self.root.bind_all("<Control-k>", lambda e: self.editor.toggle_wrap_selection("`", "`"))
-        self.root.bind_all("<Control-l>", lambda e: self.editor.insert_link())
-        self.root.bind_all("<Control-Shift-H>", lambda e: self.editor.insert_heading(2))
+        # atalhos de arquivo (globais)
+        self.root.bind("<Control-n>", lambda e: self._new())
+        self.root.bind("<Control-o>", lambda e: self._open())
+        self.root.bind("<Control-s>", lambda e: self._save())
+        self.root.bind("<Control-Shift-S>", lambda e: self._save_as())
+        self.root.bind("<Control-f>", lambda e: self._open_find())
 
+        # atalhos de formatação (no editor)
+        self.editor.bind("<Control-b>", lambda e: self._fmt_bold())
+        self.editor.bind("<Control-i>", lambda e: self._fmt_italic())
+        self.editor.bind("<Control-k>", lambda e: self._fmt_code())
+        self.editor.bind("<Control-l>", lambda e: self._fmt_link())
+        self.editor.bind("<Control-Shift-H>", lambda e: self._fmt_heading())
+
+    def _fmt_bold(self):
+        self.editor.toggle_wrap_selection("**", "**")
+        return "break"
+
+    def _fmt_italic(self):
+        self.editor.toggle_wrap_selection("*", "*")
+        return "break"
+
+    def _fmt_code(self):
+        self.editor.toggle_wrap_selection("`", "`")
+        return "break"
+
+    def _fmt_link(self):
+        self.editor.insert_link()
+        return "break"
+
+    def _fmt_heading(self):
+        self.editor.insert_heading(2)
+        return "break"
 
     # ---------- Actions ----------
     def _load_new_document(self) -> None:
@@ -104,6 +138,7 @@ class MainWindow:
         self.editor.set_content("")
         self._update_title()
         self.status_var.set("Novo documento")
+        self.linenos.redraw()
 
     def _new(self) -> None:
         if not self._ensure_can_discard_or_save():
@@ -128,6 +163,7 @@ class MainWindow:
             self.status_var.set(f"Aberto: {path.name}")
             self._update_title()
             self._refresh_recents_menu()
+            self.linenos.redraw()
         except Exception as ex:
             messagebox.showerror("Erro ao abrir", str(ex))
 
@@ -140,6 +176,7 @@ class MainWindow:
             self.status_var.set(f"Salvo: {saved_path.name}")
             self._update_title()
             self._refresh_recents_menu()
+            self.linenos.redraw()
         except Exception as ex:
             messagebox.showerror("Erro ao salvar", str(ex))
 
@@ -158,6 +195,7 @@ class MainWindow:
             self.status_var.set(f"Salvo: {saved_path.name}")
             self._update_title()
             self._refresh_recents_menu()
+            self.linenos.redraw()
         except Exception as ex:
             messagebox.showerror("Erro ao salvar", str(ex))
 
@@ -175,15 +213,18 @@ class MainWindow:
             self.status_var.set(f"Aberto: {path.name}")
             self._update_title()
             self._refresh_recents_menu()
+            self.linenos.redraw()
         except Exception as ex:
             messagebox.showerror("Erro ao abrir", str(ex))
 
     # ---------- State ----------
     def _on_editor_change(self, _content: str) -> None:
+        # marca dirty só uma vez, mas atualiza linenos sempre
         if not self.doc.state.dirty:
             self.doc.set_dirty(True)
             self._update_title()
-            self.linenos.redraw()
+
+        self.linenos.redraw()
 
     def _update_title(self) -> None:
         name = self.doc.state.path.name if self.doc.state.path else "Sem título"
@@ -203,7 +244,6 @@ class MainWindow:
             return False
         if choice is True:  # Yes
             self._save()
-            # se ainda estiver dirty, salvamento falhou/cancelou
             return not self.doc.state.dirty
         return True  # No
 
@@ -216,9 +256,8 @@ class MainWindow:
             return
 
         for path_str in recents:
-            label = path_str
             self.recent_menu.add_command(
-                label=label, command=lambda p=path_str: self._open_recent(p)
+                label=path_str, command=lambda p=path_str: self._open_recent(p)
             )
 
     def _on_close(self) -> None:
