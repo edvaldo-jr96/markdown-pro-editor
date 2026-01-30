@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv
+.venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+*.swp
+
+# build/dist
+build/
+dist/
+*.spec
+
+# logs
+*.log
+
+# runtime configs
+*.db
+*.sqlite3
