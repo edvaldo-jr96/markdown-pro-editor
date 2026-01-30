@@ -16,7 +16,9 @@ class EditorWidget(scrolledtext.ScrolledText):
         )
 
         self._on_change_callback = None
+        self._highlight_after_id = None
 
+        # modified callback
         self.bind("<<Modified>>", self._on_modified)
 
         # indent / tab
@@ -24,20 +26,17 @@ class EditorWidget(scrolledtext.ScrolledText):
         self.bind("<Shift-Tab>", self._outdent)
         self.bind("<Return>", self._newline_with_indent)
 
-        # highlight: linha ativa
-        self.tag_config("active_line", background="")
-        self.bind("<KeyRelease>", lambda e: self._highlight_active_line())
-        self.bind("<ButtonRelease-1>", lambda e: self._highlight_active_line())
+        # tags (linha ativa + markdown simples)
+        self.tag_config("active_line", background="#f0f2f5")
 
-        # highlight markdown simples
         self.tag_config("md_header", font=("Monospace", 11, "bold"))
         self.tag_config("md_codefence", font=("Monospace", 11, "bold"))
         self.tag_config("md_bold", font=("Monospace", 11, "bold"))
         self.tag_config("md_italic", font=("Monospace", 11, "italic"))
 
-        self.bind("<KeyRelease>", lambda e: self._debounced_highlight())
-
-        self._highlight_after_id = None
+        # um único handler de KeyRelease (evita override de bind)
+        self.bind("<KeyRelease>", self._on_key_release)
+        self.bind("<ButtonRelease-1>", lambda e: self._highlight_active_line())
 
     def set_on_change(self, callback):
         self._on_change_callback = callback
@@ -53,12 +52,16 @@ class EditorWidget(scrolledtext.ScrolledText):
     def get_content(self) -> str:
         return self.get("1.0", tk.END).rstrip("\n")
 
-    # ---------- modified ----------
+    # ---------- events ----------
     def _on_modified(self, _event=None) -> None:
         if self.edit_modified():
             self.edit_modified(False)
             if self._on_change_callback:
                 self._on_change_callback(self.get_content())
+
+    def _on_key_release(self, _event=None) -> None:
+        self._highlight_active_line()
+        self._debounced_highlight()
 
     # ---------- indentation ----------
     def _indent(self, _event=None):
@@ -96,7 +99,6 @@ class EditorWidget(scrolledtext.ScrolledText):
         return "break"
 
     def _newline_with_indent(self, _event=None):
-        # pega indent da linha atual
         line_start = self.index("insert linestart")
         line_text = self.get(line_start, self.index("insert lineend"))
         indent = re.match(r"[ \t]*", line_text).group(0)
@@ -104,7 +106,7 @@ class EditorWidget(scrolledtext.ScrolledText):
         self.insert(tk.INSERT, "\n" + indent)
         return "break"
 
-    # ---------- formatting shortcuts ----------
+    # ---------- formatting ----------
     def toggle_wrap_selection(self, left: str, right: str):
         try:
             start = self.index("sel.first")
@@ -113,19 +115,24 @@ class EditorWidget(scrolledtext.ScrolledText):
             self.delete(start, end)
             self.insert(start, wrap(selected, left, right))
         except tk.TclError:
-            # sem seleção: insere par e posiciona cursor no meio
             self.insert(tk.INSERT, left + right)
             self.mark_set(tk.INSERT, f"{tk.INSERT}-{len(right)}c")
 
     def insert_link(self):
+        # se tiver seleção, transforma seleção em link
         try:
             start = self.index("sel.first")
             end = self.index("sel.last")
             selected = self.get(start, end) or "texto"
+            snippet = make_link(selected, "https://")
+            self.delete(start, end)
+            self.insert(start, snippet)
+            return
         except tk.TclError:
-            selected = "texto"
+            pass
 
-        snippet = make_link(selected, "https://")
+        # sem seleção: insere no cursor
+        snippet = make_link("texto", "https://")
         self.insert(tk.INSERT, snippet)
 
     def insert_heading(self, level: int = 1):
@@ -146,7 +153,6 @@ class EditorWidget(scrolledtext.ScrolledText):
         self._highlight_after_id = self.after(200, self._apply_markdown_highlight)
 
     def _apply_markdown_highlight(self):
-        # limpa tags simples
         for tag in ("md_header", "md_codefence", "md_bold", "md_italic"):
             self.tag_remove(tag, "1.0", tk.END)
 
@@ -154,27 +160,19 @@ class EditorWidget(scrolledtext.ScrolledText):
 
         # headers
         for m in re.finditer(r"(?m)^(#{1,6})\s+(.+)$", text):
-            start = self._index_from_pos(m.start())
-            end = self._index_from_pos(m.end())
-            self.tag_add("md_header", start, end)
+            self.tag_add("md_header", self._index_from_pos(m.start()), self._index_from_pos(m.end()))
 
         # code fences
         for m in re.finditer(r"(?m)^```.*$", text):
-            start = self._index_from_pos(m.start())
-            end = self._index_from_pos(m.end())
-            self.tag_add("md_codefence", start, end)
+            self.tag_add("md_codefence", self._index_from_pos(m.start()), self._index_from_pos(m.end()))
 
         # bold **text**
         for m in re.finditer(r"\*\*(.+?)\*\*", text):
-            start = self._index_from_pos(m.start())
-            end = self._index_from_pos(m.end())
-            self.tag_add("md_bold", start, end)
+            self.tag_add("md_bold", self._index_from_pos(m.start()), self._index_from_pos(m.end()))
 
-        # italic *text* (bem simples, sem cobrir todos casos)
+        # italic *text* (bem simples)
         for m in re.finditer(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", text):
-            start = self._index_from_pos(m.start())
-            end = self._index_from_pos(m.end())
-            self.tag_add("md_italic", start, end)
+            self.tag_add("md_italic", self._index_from_pos(m.start()), self._index_from_pos(m.end()))
 
     def _index_from_pos(self, pos: int) -> str:
         return f"1.0+{pos}c"
