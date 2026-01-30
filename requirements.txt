@@ -3,3 +3,4 @@ weasyprint>=60
 pygments>=2.15
 Pillow>=10.0
 watchdog>=3.0
+PyYAML>=6.0

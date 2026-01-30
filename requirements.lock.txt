@@ -8,6 +8,7 @@ pycparser==3.0
 pydyf==0.12.1
 Pygments==2.19.2
 pyphen==0.17.2
+PyYAML==6.0.3
 tinycss2==1.5.1
 tinyhtml5==2.0.0
 watchdog==6.0.0
