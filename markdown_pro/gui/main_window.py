@@ -6,7 +6,8 @@ from pathlib import Path
 
 from markdown_pro.core.document_manager import DocumentManager
 from markdown_pro.gui.editor_widget import EditorWidget
-
+from markdown_pro.gui.line_numbers import LineNumbers
+from markdown_pro.gui.find_replace_dialog import FindReplaceDialog
 
 class MainWindow:
     def __init__(self) -> None:
@@ -50,8 +51,14 @@ class MainWindow:
 
         ttk.Separator(container).pack(fill=tk.X, pady=8)
 
-        self.editor = EditorWidget(container)
-        self.editor.pack(fill=tk.BOTH, expand=True)
+        workspace = ttk.Frame(container)
+        workspace.pack(fill=tk.BOTH, expand=True)
+
+        self.editor = EditorWidget(workspace)
+        self.editor.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        self.linenos = LineNumbers(workspace, self.editor)
+        self.linenos.pack(side=tk.LEFT, fill=tk.Y)
 
         self.editor.set_on_change(self._on_editor_change)
 
@@ -83,6 +90,13 @@ class MainWindow:
         self.root.bind_all("<Control-o>", lambda e: self._open())
         self.root.bind_all("<Control-s>", lambda e: self._save())
         self.root.bind_all("<Control-Shift-S>", lambda e: self._save_as())
+        self.root.bind_all("<Control-f>", lambda e: self._open_find())
+        self.root.bind_all("<Control-b>", lambda e: self.editor.toggle_wrap_selection("**", "**"))
+        self.root.bind_all("<Control-i>", lambda e: self.editor.toggle_wrap_selection("*", "*"))
+        self.root.bind_all("<Control-k>", lambda e: self.editor.toggle_wrap_selection("`", "`"))
+        self.root.bind_all("<Control-l>", lambda e: self.editor.insert_link())
+        self.root.bind_all("<Control-Shift-H>", lambda e: self.editor.insert_heading(2))
+
 
     # ---------- Actions ----------
     def _load_new_document(self) -> None:
@@ -169,6 +183,7 @@ class MainWindow:
         if not self.doc.state.dirty:
             self.doc.set_dirty(True)
             self._update_title()
+            self.linenos.redraw()
 
     def _update_title(self) -> None:
         name = self.doc.state.path.name if self.doc.state.path else "Sem título"
@@ -210,6 +225,9 @@ class MainWindow:
         if not self._ensure_can_discard_or_save():
             return
         self.root.destroy()
+
+    def _open_find(self) -> None:
+        FindReplaceDialog(self.root, self.editor)
 
     def run(self) -> None:
         self.root.mainloop()
